@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EQL Family Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1b1b1b">
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1b1b1b; --muted: #6b6b6b;
+    --border: #e2e2de; --accent: #1b1b1b; --accent-text: #fff;
+    --won: #1f8a4c; --lost: #b23b3b; --pending: #b7791f; --bought: #2b6cb0; --none: #9a9a9a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121212; --panel: #1c1c1c; --text: #eee; --muted: #9a9a9a;
+      --border: #2e2e2e; --accent: #eee; --accent-text: #121212;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 16px 20px;
+    border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: none; border: 1px solid transparent; color: var(--muted);
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
+  nav button.active { color: var(--text); border-color: var(--border); background: var(--bg); }
+  .spacer { flex: 1; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .stat .v { font-size: 24px; font-weight: 600; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .scroll { overflow-x: auto; }
+  .btn { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font: inherit; }
+  .btn.ghost { background: none; color: var(--text); border: 1px solid var(--border); }
+  .btn.small { padding: 3px 9px; font-size: 12px; }
+  .btn.danger { background: none; color: var(--lost); border: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  form.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input, select, textarea { font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  textarea { min-height: 38px; resize: vertical; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; color: #fff; }
+  select.status { font-size: 12px; padding: 3px 6px; }
+  select.status[data-s="entered"] { border-color: var(--pending); color: var(--pending); }
+  select.status[data-s="won"] { border-color: var(--won); color: var(--won); }
+  select.status[data-s="lost"] { border-color: var(--lost); color: var(--lost); }
+  select.status[data-s="purchased"] { border-color: var(--bought); color: var(--bought); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 20px; text-align: center; }
+  .warn { font-size: 12px; color: var(--muted); }
+  dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text);
+    max-width: 640px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .soon { color: var(--pending); font-weight: 600; }
+  @media (max-width: 600px) { main { padding: 12px 16px; } header { padding: 12px 16px; } }
+</style>
+</head>
+<body>
+<div id="updateBar" hidden style="background:var(--accent);color:var(--accent-text);padding:8px 20px;display:flex;gap:12px;align-items:center;justify-content:center">
+  A new version is ready.
+  <button class="btn ghost small" style="color:inherit;border-color:currentColor" onclick="location.reload()">Reload to update</button>
+</div>
+<header>
+  <h1>EQL Family Tracker</h1>
+  <nav id="tabs">
+    <button data-tab="dashboard" class="active">Dashboard</button>
+    <button data-tab="accounts">Accounts</button>
+    <button data-tab="drops">Drops</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="row">
+    <span class="muted" style="font-size:12px" id="versionLabel"></span>
+    <button class="btn small" id="installBtn" hidden>Install app</button>
+    <button class="btn ghost small" id="exportBtn">Export backup</button>
+    <button class="btn ghost small" id="importBtn">Import backup</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+  </div>
+</header>
+
+<main>
+  <!-- DASHBOARD -->
+  <section id="dashboard">
+    <div class="stats" id="stats"></div>
+    <div class="card">
+      <h2>Upcoming drops</h2>
+      <div id="upcoming"></div>
+    </div>
+    <div class="card">
+      <h2>Results by family member</h2>
+      <div class="scroll" id="perAccount"></div>
+    </div>
+  </section>
+
+  <!-- ACCOUNTS -->
+  <section id="accounts" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Family accounts</h2>
+        <button class="btn" id="addAccountBtn">+ Add account</button>
+      </div>
+      <p class="warn">Keep passwords in a password manager. This app doesn't store them.</p>
+      <div class="scroll" id="accountList"></div>
+    </div>
+  </section>
+
+  <!-- DROPS -->
+  <section id="drops" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Drops &amp; raffles</h2>
+        <div class="row">
+          <select id="dropFilter">
+            <option value="all">All drops</option>
+            <option value="upcoming">Upcoming / open</option>
+            <option value="past">Past</option>
+          </select>
+          <button class="btn" id="addDropBtn">+ Add drop</button>
+        </div>
+      </div>
+      <p class="warn">One entry per person per drop, following EQL's rules. Set each family member's status below.</p>
+      <div id="dropList"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Account dialog -->
+<dialog id="accountDialog">
+  <form method="dialog" id="accountForm">
+    <h2 id="accountDialogTitle" style="margin-top:0">Account</h2>
+    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+      <label>Family member *<input name="name" required></label>
+      <label>EQL login email<input name="email" type="email"></label>
+      <label>Phone<input name="phone"></label>
+      <label>Region / country<input name="region" placeholder="e.g. US, UK, AU"></label>
+      <label>Shoe size<input name="shoeSize" placeholder="e.g. US 10"></label>
+      <label>Clothing size<input name="clothingSize" placeholder="e.g. M"></label>
+      <label style="grid-column:1/-1">Notes<textarea name="notes" placeholder="Preferred brands, shipping notes, etc."></textarea></label>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button class="btn" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Drop dialog -->
+<dialog id="dropDialog">
+  <form method="dialog" id="dropForm">
+    <h2 id="dropDialogTitle" style="margin-top:0">Drop</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+      <label style="grid-column:1/-1">Product *<input name="product" required placeholder="e.g. Air Jordan 4 'Bred'"></label>
+      <label>Retailer / store<input name="retailer" placeholder="Store running the EQL raffle"></label>
+      <label>Price<input name="price" placeholder="e.g. $210"></label>
+      <label>Raffle opens<input name="opens" type="datetime-local"></label>
+      <label>Raffle closes<input name="closes" type="datetime-local"></label>
+      <label>Results / draw date<input name="draw" type="datetime-local"></label>
+      <label>Raffle link<input name="link" type="url" placeholder="https://..."></label>
+      <label style="grid-column:1/-1">Notes<textarea name="notes"></textarea></label>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button class="btn" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const STORE_KEY = 'eqlFamilyTracker.v1';
+const STATUSES = [
+  ['none', 'Not entered'], ['entered', 'Entered'], ['won', 'Won'],
+  ['lost', 'Lost'], ['purchased', 'Purchased']
+];
+
+let state = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { accounts: [], drops: [], entries: {} }; // entries[dropId][accountId] = status
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch (e) { alert('Could not save. Use "Export backup" to keep your data.'); }
+  render();
+}
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = d => d ? new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const statusOf = (dropId, accId) => (state.entries[dropId] || {})[accId] || 'none';
+
+function dropEnd(d) { return d.draw || d.closes || d.opens; }
+function isPast(d) { const e = dropEnd(d); return e ? new Date(e) < new Date() : false; }
+
+/* ---------- Tabs ---------- */
+document.getElementById('tabs').addEventListener('click', e => {
+  const t = e.target.dataset.tab; if (!t) return;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  ['dashboard', 'accounts', 'drops'].forEach(id => document.getElementById(id).hidden = id !== t);
+});
+
+/* ---------- Render ---------- */
+function render() { renderDashboard(); renderAccounts(); renderDrops(); }
+
+function tally(accId) {
+  const t = { entered: 0, won: 0, lost: 0, purchased: 0 };
+  for (const d of state.drops) {
+    const s = statusOf(d.id, accId);
+    if (s !== 'none') t.entered++;
+    if (s === 'won' || s === 'purchased') t.won++;
+    if (s === 'lost') t.lost++;
+    if (s === 'purchased') t.purchased++;
+  }
+  return t;
+}
+
+function renderDashboard() {
+  let entered = 0, won = 0, pending = 0;
+  for (const d of state.drops) for (const a of state.accounts) {
+    const s = statusOf(d.id, a.id);
+    if (s !== 'none') entered++;
+    if (s === 'won' || s === 'purchased') won++;
+    if (s === 'entered') pending++;
+  }
+  const upcoming = state.drops.filter(d => !isPast(d))
+    .sort((a, b) => new Date(a.closes || a.opens || 0) - new Date(b.closes || b.opens || 0));
+
+  document.getElementById('stats').innerHTML = [
+    [state.accounts.length, 'Family accounts'],
+    [upcoming.length, 'Upcoming / open drops'],
+    [entered, 'Total entries'],
+    [pending, 'Awaiting results'],
+    [won, 'Wins'],
+    [entered ? Math.round(won / entered * 100) + '%' : '—', 'Win rate'],
+  ].map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+
+  const up = document.getElementById('upcoming');
+  if (!upcoming.length) { up.innerHTML = '<div class="empty">No upcoming drops. Add one in the Drops tab.</div>'; }
+  else up.innerHTML = `<div class="scroll"><table><tr><th>Product</th><th>Retailer</th><th>Closes</th><th>Entered</th><th>Still to enter</th></tr>${
+    upcoming.map(d => {
+      const missing = state.accounts.filter(a => statusOf(d.id, a.id) === 'none');
+      const enteredN = state.accounts.length - missing.length;
+      const soon = d.closes && (new Date(d.closes) - new Date()) < 24 * 3600e3 && new Date(d.closes) > new Date();
+      return `<tr><td>${esc(d.product)}</td><td>${esc(d.retailer)}</td>
+        <td class="${soon ? 'soon' : ''}">${fmt(d.closes)}${soon ? ' (soon)' : ''}</td>
+        <td>${enteredN}/${state.accounts.length}</td>
+        <td>${missing.length ? missing.map(a => esc(a.name)).join(', ') : '<span class="muted">Everyone</span>'}</td></tr>`;
+    }).join('')}</table></div>`;
+
+  const pa = document.getElementById('perAccount');
+  if (!state.accounts.length) { pa.innerHTML = '<div class="empty">Add family accounts to see results.</div>'; return; }
+  pa.innerHTML = `<table><tr><th>Member</th><th>Entries</th><th>Wins</th><th>Losses</th><th>Purchased</th><th>Win rate</th></tr>${
+    state.accounts.map(a => { const t = tally(a.id);
+      return `<tr><td>${esc(a.name)}</td><td>${t.entered}</td><td>${t.won}</td><td>${t.lost}</td><td>${t.purchased}</td>
+        <td>${t.entered ? Math.round(t.won / t.entered * 100) + '%' : '—'}</td></tr>`; }).join('')}</table>`;
+}
+
+function renderAccounts() {
+  const el = document.getElementById('accountList');
+  if (!state.accounts.length) { el.innerHTML = '<div class="empty">No accounts yet.</div>'; return; }
+  el.innerHTML = `<table><tr><th>Member</th><th>Email</th><th>Phone</th><th>Region</th><th>Shoe</th><th>Clothing</th><th>Notes</th><th></th></tr>${
+    state.accounts.map(a => `<tr>
+      <td><strong>${esc(a.name)}</strong></td><td>${esc(a.email)}</td><td>${esc(a.phone)}</td><td>${esc(a.region)}</td>
+      <td>${esc(a.shoeSize)}</td><td>${esc(a.clothingSize)}</td><td class="muted">${esc(a.notes)}</td>
+      <td class="row" style="flex-wrap:nowrap">
+        <button class="btn ghost small" data-edit-acc="${a.id}">Edit</button>
+        <button class="btn danger small" data-del-acc="${a.id}">Delete</button></td></tr>`).join('')}</table>`;
+}
+
+function renderDrops() {
+  const el = document.getElementById('dropList');
+  const f = document.getElementById('dropFilter').value;
+  let drops = [...state.drops].sort((a, b) => new Date(b.closes || b.opens || 0) - new Date(a.closes || a.opens || 0));
+  if (f === 'upcoming') drops = drops.filter(d => !isPast(d));
+  if (f === 'past') drops = drops.filter(isPast);
+  if (!drops.length) { el.innerHTML = '<div class="empty">No drops here yet.</div>'; return; }
+
+  el.innerHTML = drops.map(d => `
+    <div class="card" style="margin:12px 0 0">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <strong>${esc(d.product)}</strong> ${d.price ? `<span class="muted">· ${esc(d.price)}</span>` : ''}
+          ${isPast(d) ? '<span class="muted"> · past</span>' : ''}
+          <div class="muted" style="font-size:12px">
+            ${esc(d.retailer) || 'Retailer not set'} · Opens ${fmt(d.opens)} · Closes ${fmt(d.closes)} · Draw ${fmt(d.draw)}
+            ${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">Raffle link</a>` : ''}
+          </div>
+          ${d.notes ? `<div class="muted" style="font-size:12px">${esc(d.notes)}</div>` : ''}
+        </div>
+        <div class="row">
+          <button class="btn ghost small" data-edit-drop="${d.id}">Edit</button>
+          <button class="btn danger small" data-del-drop="${d.id}">Delete</button>
+        </div>
+      </div>
+      ${state.accounts.length ? `<div class="scroll"><table style="margin-top:8px"><tr><th>Member</th><th>Size</th><th>Status</th></tr>${
+        state.accounts.map(a => { const s = statusOf(d.id, a.id);
+          return `<tr><td>${esc(a.name)}</td><td class="muted">${esc(a.shoeSize || a.clothingSize)}</td>
+            <td><select class="status" data-s="${s}" data-drop="${d.id}" data-acc="${a.id}">
+              ${STATUSES.map(([v, l]) => `<option value="${v}" ${v === s ? 'selected' : ''}>${l}</option>`).join('')}
+            </select></td></tr>`; }).join('')}</table></div>`
+        : '<p class="muted">Add family accounts to track entries.</p>'}
+    </div>`).join('');
+}
+
+/* ---------- Status changes ---------- */
+document.getElementById('dropList').addEventListener('change', e => {
+  const s = e.target.closest('select.status'); if (!s) return;
+  const { drop, acc } = s.dataset;
+  state.entries[drop] = state.entries[drop] || {};
+  if (s.value === 'none') delete state.entries[drop][acc]; else state.entries[drop][acc] = s.value;
+  save();
+});
+document.getElementById('dropFilter').addEventListener('change', renderDrops);
+
+/* ---------- Dialog helpers ---------- */
+function openForm(dialog, form, obj, title) {
+  form.reset();
+  dialog.querySelector('h2').textContent = title;
+  if (obj) for (const [k, v] of Object.entries(obj)) if (form.elements[k]) form.elements[k].value = v ?? '';
+  dialog.dataset.editing = obj ? obj.id : '';
+  dialog.showModal();
+}
+document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+
+function bindForm(dialog, form, listKey) {
+  form.addEventListener('submit', e => {
+    if (!form.checkValidity()) { e.preventDefault(); return; }
+    const data = Object.fromEntries(new FormData(form));
+    const id = dialog.dataset.editing;
+    if (id) Object.assign(state[listKey].find(x => x.id === id), data);
+    else state[listKey].push({ id: uid(), ...data });
+    save();
+  });
+}
+const accountDialog = document.getElementById('accountDialog'), accountForm = document.getElementById('accountForm');
+const dropDialog = document.getElementById('dropDialog'), dropForm = document.getElementById('dropForm');
+bindForm(accountDialog, accountForm, 'accounts');
+bindForm(dropDialog, dropForm, 'drops');
+
+document.getElementById('addAccountBtn').onclick = () => openForm(accountDialog, accountForm, null, 'Add account');
+document.getElementById('addDropBtn').onclick = () => openForm(dropDialog, dropForm, null, 'Add drop');
+
+document.body.addEventListener('click', e => {
+  const t = e.target.dataset;
+  if (t.editAcc) openForm(accountDialog, accountForm, state.accounts.find(a => a.id === t.editAcc), 'Edit account');
+  if (t.editDrop) openForm(dropDialog, dropForm, state.drops.find(d => d.id === t.editDrop), 'Edit drop');
+  if (t.delAcc && confirm('Delete this account and its entry history?')) {
+    state.accounts = state.accounts.filter(a => a.id !== t.delAcc);
+    for (const k in state.entries) delete state.entries[k][t.delAcc];
+    save();
+  }
+  if (t.delDrop && confirm('Delete this drop?')) {
+    state.drops = state.drops.filter(d => d.id !== t.delDrop);
+    delete state.entries[t.delDrop];
+    save();
+  }
+});
+
+/* ---------- Backup ---------- */
+document.getElementById('exportBtn').onclick = () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `eql-family-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data.accounts) || !Array.isArray(data.drops)) throw new Error('bad');
+    if (confirm('Replace current data with this backup?')) { state = { entries: {}, ...data }; save(); }
+  } catch { alert('That file is not a valid backup.'); }
+  e.target.value = '';
+};
+
+render();
+
+/* ---------- App install + updates ---------- */
+// Bump this (and CACHE_VERSION in sw.js) whenever you publish an update.
+const APP_VERSION = '1.0.0';
+document.getElementById('versionLabel').textContent = 'v' + APP_VERSION;
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  document.getElementById('installBtn').hidden = false;
+});
+document.getElementById('installBtn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  document.getElementById('installBtn').hidden = true;
+};
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const showUpdate = () => { document.getElementById('updateBar').hidden = false; };
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      sw.addEventListener('statechange', () => {
+        // Only an update if a previous version was already in control.
+        if (sw.state === 'activated' && navigator.serviceWorker.controller) showUpdate();
+      });
+    });
+    // Check for updates when the app regains focus and every 30 minutes.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update(); });
+    setInterval(() => reg.update(), 30 * 60 * 1000);
+  });
+}
+</script>
+</body>
+</html>
